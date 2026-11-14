@@ -36,3 +36,40 @@
 ## v1.1 表示改善
 - 回答後の「次の問題へ」／「結果を見る」ボタンを画面下部のナビゲーションのすぐ上に固定し、解説が長くてもスクロールなしで押せるようにしました。
 - 更新後はiPhoneのホーム画面アプリを終了して開き直してください。学習履歴の保存形式は変更していません。
+
+## v1.3 Notion学習ログ同期（初回だけ設定が必要）
+Notion学習ログDB:
+https://app.notion.com/p/4182b8a1b3dd81f3aeaac6a78ab17ce8
+
+### セキュリティ上の注意
+- GitHub Pagesは公開サイトです。NOTION_TOKEN・SYNC_KEYはGitHubのファイルに書かないでください。
+- Notionの連携トークンは**Cloudflare Worker の Secret**だけに登録してください。
+- SYNC_KEYはNotionトークンとは別のランダムな32文字以上の値を自分で作り、Cloudflare SecretとiPhoneアプリ内の設定に入力します。チャットで共有しないでください。
+- 学習結果は設定後に初めてNotionへ送られます。過去の学習セッションは別形式で保存されていたため、この版では自動遡及しません。
+
+### 1. Notion内の専用インテグレーションを用意
+1. https://www.notion.so/profile/integrations (または Notion integrations の画面)で内部インテグレーションを新規作成。
+2. 対象のワークスペースを選び、ページの読み取りと書き込み権限を許可。
+3. Notionの「英語ポケット｜学習ログ」データベースを開き、Connections（接続）メニューから作成したインテグレーションを接続します。
+4. インテグレーションのAPIトークンをCloudflare Workerの NOTION_TOKEN Secret にだけ保存します。
+
+### 2. Cloudflare Workerのデプロイ
+1. https://dash.cloudflare.com/ にログインし、Workers & Pages → Create Worker（Create application など表示差あり）から新規Workerを作成します。名前例は english-pocket-sync 。
+2. Workerの編集画面に、このリポジトリの cloudflare-worker.js の全文を貼り、Deploy（デプロイ）します。
+3. Worker → Settings → Variables and Secrets から以下を追加します。
+   - NOTION_TOKEN : Secret、Notion専用インテグレーショントークン
+   - SYNC_KEY : Secret、独自に作った32文字以上のランダム文字列
+   - NOTION_DATA_SOURCE_ID : Text、4182b8a1-b3dd-8184-a188-000b878d8859
+4. 保存してDeployします。Cloudflareが発行したWorker URL（https://...workers.dev）を控えます。
+5. iPhoneの英語ポケット → 記録 → Notion自動同期でWorker URLとSYNC_KEYを入力し、「同期設定を保存」→「接続確認」を押します。NotionのNOTION_TOKENを入力してはいけません。
+6. 5問解くと自動で1セッションがNotionへ記録されます。ネット接続がないときはキューに保持し、アプリ起動中にオンラインへ戻るか次回起動時に再試行します。
+
+### トラブルシューティング
+- HTTP 401: SYNC_KEYが一致していません。
+- HTTP 503: Worker Secrets が未設定。
+- HTTP 502: Notion接続権限かデータソースID、Notionインテグレーションの設定を確認。
+- 同期失敗でも端末内の学習履歴は残ります。「記録」画面から再同期できます。
+- スマホで旧画面が残る場合、GitHub Pagesの反映を待ち、アプリを終了して再起動します。
+
+### 保存するデータ
+1回の5問終了ごとに、日付、問題分野、回答数、正解数、正答率、間違えた問題、および各問題の回答・正解をNotionの新しい「英語ポケット｜学習ログ」データベースに記録します。
