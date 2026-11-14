@@ -1,0 +1,34 @@
+# 英語ポケット — GitHub Pages 公開用
+
+スマホで使う英単語・熟語・前置詞・文法の学習用PWAです。**GitHub Pagesへの公開はまだ行っていません。**
+
+## GitHubへの配置方法
+
+1. GitHubで `english-pocket` という Public リポジトリを作る（README・.gitignoreの自動追加は不要）。
+2. リポジトリの `Add file` → `Upload files` をクリック。
+3. この ZIP を解凍し、**中身のファイル**をすべてアップロードする（フォルダ自体はアップロードしない）。
+4. `Commit changes` で保存。
+5. `Settings` → `Pages` → `Build and deployment` → `Deploy from a branch` を選び、`main` と `/(root)` を選択して `Save`。
+6. Pages に表示される公開 URL を開く。通常は `https://<GitHubユーザー名>.github.io/english-pocket/`。
+7. iPhone の Safari で公開URLを開く → 共有 → `ホーム画面に追加` → `Webアプリとして開く` をオン → `追加`。
+
+※リポジトリ名を変更したらURLの末尾も変わります。発行まで数分かかる場合があります。
+
+## ファイル構成
+
+- `index.html` — アプリ画面、問題、学習履歴の保存
+- `manifest.webmanifest` — ホーム画面追加時の名称・表示設定
+- `sw.js` — オフライン利用用のキャッシュ
+- `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, `icon.svg` — アイコン
+- `.nojekyll` — 静的ファイル配信のための設定
+- `README.md` — この説明
+
+## 重要な点
+
+- 現時点では、学習履歴はブラウザ（ホーム画面から開いたWebアプリ）の**端末内localStorage**に保存します。GitHubやNotionには送信されません。
+- Safariとホーム画面アプリの保存領域が別々になることがあるため、**学習はホーム画面アプリから行う**ことを推奨します。
+- アプリを削除したりWebサイトデータを消去したりすると履歴が消える可能性があります。学習記録画面から定期的にJSONバックアップを保存してください。
+- 初回表示時はネット接続が必要です。一度キャッシュされればオフラインでも使える設計ですが、iOSのキャッシュ削除・OS設定などによって利用できなくなる場合があります。
+- 更新を反映するには、`sw.js` の `CACHE_NAME` を `v3` などに変えて再公開し、アプリを再起動するのが確実です。
+- 公開されたGitHub Pagesのソースは第三者も閲覧できます。Notion APIトークン、個人情報、パスワードなどを**絶対に**ファイルに書き込まないでください。
+- 今後Notionと自動同期する場合は、別途認証・サーバー側の安全な連携処理が必要です。
