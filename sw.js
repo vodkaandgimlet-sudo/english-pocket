@@ -1,4 +1,4 @@
-const CACHE_NAME = 'english-pocket-static-v2';
+const CACHE_NAME = 'english-pocket-static-v3';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(FILES)));
