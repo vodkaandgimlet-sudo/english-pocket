@@ -50,16 +50,25 @@ function setMode(v){
 function feedback(data){
  const box=$('writingFeedback');box.replaceChildren();
  add(box,'h3','添削結果');
- const score=add(box,'p','文法：'+(data.grammarAssessment||'確認済み')+' / 自然さ：'+(data.naturalnessAssessment||'確認済み'),'writing-eval');
- const corrected=add(box,'div','おすすめの英文','writing-subtitle');
- add(box,'p',data.corrected||'','writing-corrected');
- add(box,'div','日本語の意味','writing-subtitle');
- add(box,'p',data.translation||'','writing-ja');
- add(box,'div','文法のポイント','writing-subtitle');
- add(box,'p',data.grammarExplanation||'','writing-explain');
- add(box,'div','自然な言い回し','writing-subtitle');
- add(box,'p',data.naturalnessExplanation||'','writing-explain');
- if(data.alternative){add(box,'div','別の言い方','writing-subtitle');add(box,'p',data.alternative,'writing-explain');}
+ add(box,'p','文法：'+(data.grammarAssessment||'確認済み')+' / 自然さ：'+(data.naturalnessAssessment||'確認済み'),'writing-eval');
+ const section=(num,title,content,klass='writing-explain')=>{
+   if(!content)return;
+   add(box,'h4',num+' '+title,'writing-step-title');
+   add(box,'p',content,klass);
+ };
+ section('①','元の英文はどう伝わる？',data.originalMeaning||'');
+ if(data.meaningDifference&&data.meaningDifference!=='意味のずれはありません。'){
+   add(box,'p','意図との違い：'+data.meaningDifference,'writing-meaning-difference');
+ }
+ section('②','どこが、なぜ間違っている？',data.errorBreakdown||data.grammarExplanation||'');
+ if(data.grammarExplanation&&data.errorBreakdown){
+   add(box,'p','文法のルール：'+data.grammarExplanation,'writing-ja');
+ }
+ section('③','文法を直した英文（原文に近い形）',data.minimalCorrection||data.corrected||'','writing-corrected');
+ section('④','より自然な英文',data.corrected||'','writing-corrected');
+ if(data.translation)add(box,'p','日本語訳：'+data.translation,'writing-ja');
+ if(data.naturalnessExplanation)add(box,'p',data.naturalnessExplanation,'writing-explain');
+ if(data.alternative)section('＋','別の言い方',data.alternative,'writing-explain');
  if(data.encouragement)add(box,'p',data.encouragement,'writing-ja');
  box.classList.remove('hide');
 }
