@@ -68,6 +68,30 @@ async function notion(env, path, data) {
   }
   return res.json();
 }
+// Deterministic checks only flag text that exists in the student's original input.
+function concreteChecks(original) {
+  const issues = [];
+  const add = (match, fix, reason, kind = "grammar") => {
+    if (!match || !original.includes(match) || issues.some(i => i.quote === match)) return;
+    issues.push({ quote: match, fix, reason, kind });
+  };
+  const nonVerb = original.match(/\b(?:wasn't|weren't|isn't|aren't)\s+(?:know|like|want|work|go|have|understand)\b/i);
+  if (nonVerb) {
+    const past = /^(?:wasn't|weren't)/i.test(nonVerb[0]);
+    const word = nonVerb[0].split(/\s+/).slice(1).join(" ");
+    add(nonVerb[0], (past ? "didn't " : "don't ") + word,
+      "know などの一般動詞の否定文には do/does/did を使います。be動詞の否定形 + 動詞原形にはできません。主語と時制に合わせた形を選びます。");
+  }
+  for (const m of original.matchAll(/\b(chinese|japanese|english|korean|french|german)\b/g)) {
+    add(m[0], m[0][0].toUpperCase() + m[0].slice(1),
+      "国名・言語名・国籍を表す語は、英文の途中でも大文字で始めます。");
+  }
+  const wondered = original.match(/\bwondered\s+that\b/i);
+  if (wondered) add(wondered[0], "wondered whether / was surprised that",
+    "wonder whether は「〜かどうか疑問に思う」、was surprised that は「〜だと知って驚く」。意味が異なるので、どちらを言いたかったかで選びます。");
+  return issues;
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
@@ -174,7 +198,7 @@ export default {
             !parsed.corrected.trim() || !parsed.translation.trim() || !parsed.minimalCorrection.trim()) {
           return response({ ok: false, error: "ai_invalid_output" }, 502, origin);
         }
-        const issues = parsed.issues.slice(0, 6).filter(issue =>
+        const aiIssues = parsed.issues.slice(0, 6).filter(issue =>
           issue && typeof issue.quote === "string" && issue.quote.trim().length >= 2 &&
           body.answer.includes(issue.quote) &&
           typeof issue.fix === "string" && issue.fix.trim() &&
@@ -186,9 +210,16 @@ export default {
           reason: issue.reason.slice(0, 500),
           kind: issue.kind
         }));
+        const deterministic = concreteChecks(body.answer);
+        const issues = [...deterministic];
+        for (const issue of aiIssues) {
+          if (issues.some(item => item.quote.toLowerCase() === issue.quote.toLowerCase())) continue;
+          issues.push(issue);
+        }
         const feedback = Object.fromEntries(fields.map(field => [field, parsed[field].slice(0, 1600)]));
-        feedback.issues = issues;
-        return response({ ok: true, feedback, correctionVersion: "3.0" }, 200, origin);
+        feedback.issues = issues.slice(0, 6);
+        feedback.originalEnglish = body.answer;
+        return response({ ok: true, feedback, correctionVersion: "3.1" }, 200, origin);
       } catch (err) {
         console.error("Workers AI correction failed:", String(err).slice(0, 250));
         return response({ ok: false, error: "ai_request_failed" }, 502, origin);
@@ -198,7 +229,7 @@ export default {
       return response({ ok: false, error: "not_configured" }, 503, origin);
     }
     if (request.method === "GET" && path === "/health") {
-      return response({ ok: true, connected: true, correctionVersion: "3.0" }, 200, origin);
+      return response({ ok: true, connected: true, correctionVersion: "3.1" }, 200, origin);
     }
     if (request.method !== "POST" || path !== "/sync") {
       return response({ ok: false, error: "not_found" }, 404, origin);
