@@ -77,9 +77,10 @@ async function check(){
    const response=await fetch(prefs.origin+'/correct',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Key':prefs.secret},body:JSON.stringify({mode,answer,ja:record.ja,reference:mode==='guided'?current.example:null,context:mode==='guided'?current.goal:null}),cache:'no-store'});
    const body=await response.json().catch(()=>({}));
    if(!response.ok||!body.ok){
-     if(response.status===503&&body.error==='ai_not_configured')throw new Error('Cloudflare側にOPENAI_API_KEYがまだ設定されていません。');
+     if(response.status===503&&body.error==='ai_not_configured')throw new Error('Cloudflare WorkerにWorkers AIの「AI」バインディングを追加してください。');
      if(response.status===401)throw new Error('同期キーを確認してください。');
-     if(response.status===429)throw new Error('しばらく時間をおいて再試行してください。');
+     if(response.status===429)throw new Error('AIの利用上限に達した可能性があります。翌日以降にお試しください。');
+     if(body.error==='ai_invalid_output')throw new Error('添削結果を読み取れませんでした。もう一度お試しください。');
      throw new Error('添削に失敗しました（'+response.status+'）。');
    }
    record.review=body.feedback;feedback(body.feedback);
