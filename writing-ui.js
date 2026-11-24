@@ -48,9 +48,10 @@ function setMode(v){
  $('writingFeedback').replaceChildren();$('writingFeedback').classList.add('hide');
  $('writingExample').classList.add('hide');$('writingStatus').textContent='';
 }
-function feedback(data){
+function feedback(data,intent=''){
  const box=$('writingFeedback');box.replaceChildren();
  add(box,'h3','添削結果');
+ if(intent){add(box,'div','確認した意図','writing-subtitle');add(box,'p',intent,'writing-intent-confirmed');}
  if(data.originalEnglish){add(box,'div','添削対象：あなたが送信した原文','writing-subtitle');add(box,'p',data.originalEnglish,'writing-original');}
  add(box,'p','文法：'+(data.grammarAssessment||'確認中')+' / 自然さ：'+(data.naturalnessAssessment||'確認中'),'writing-eval');
  const part=(num,title,value,klass='writing-explain')=>{
@@ -129,13 +130,14 @@ async function check(intent='',original=null){
    const response=await fetch(prefs.origin+'/correct',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Key':prefs.secret},body:JSON.stringify({mode:record.mode,answer,ja:record.ja,reference:record.mode==='guided'?(prompts.find(x=>x.id===record.promptId)?.example||''):null,intent:intent||null}),cache:'no-store'});
    const body=await response.json().catch(()=>({}));
    if(!response.ok||!body.ok){
+     if(response.status===422&&body.error==='revision_inconsistent')throw new Error('確認した意図と修正文が一致しないため、添削を確定しませんでした。再試行してください。');
      if(response.status===503&&body.error==='ai_not_configured')throw new Error('Cloudflare WorkerにWorkers AIの「AI」バインディングを追加してください。');
      if(response.status===401)throw new Error('同期キーを確認してください。');
      if(response.status===429)throw new Error('AIの利用上限に達した可能性があります。翌日以降にお試しください。');
      if(body.error==='ai_invalid_output')throw new Error('添削結果を読み取れませんでした。もう一度お試しください。');
      throw new Error('添削に失敗しました（'+response.status+'）。');
    }
-   if(body.correctionVersion!=='3.2'||!Array.isArray(body.feedback?.issues)||body.feedback?.originalEnglish!==answer)throw new Error('Cloudflare Workerが旧バージョン、または添削対象が一致しません。最新のworker.jsをDeployしてください。');
+   if(body.correctionVersion!=='3.3'||!Array.isArray(body.feedback?.issues)||body.feedback?.originalEnglish!==answer)throw new Error('Cloudflare Workerが旧バージョン、または添削対象が一致しません。最新のworker.jsをDeployしてください。');
    if(body.clarification && !intent && Array.isArray(body.clarification.options)){
      showInitialGrammar(body.feedback);
      clarificationPanel(body.clarification.question,body.clarification.options,selected=>{void check(selected,record);});
@@ -144,8 +146,8 @@ async function check(intent='',original=null){
    }
    record.intent=intent||'';
    record.review=body.feedback;
-   feedback(body.feedback);
-   $('writingStatus').textContent='AI添削が完了しました（添削エンジン 3.2）';
+   feedback(body.feedback,record.intent);
+   $('writingStatus').textContent='AI添削が完了しました（添削エンジン 3.3）';
  }catch(e){
    $('writingStatus').textContent=e.message;
    $('writingExample').classList.toggle('hide',record.mode!=='guided');
