@@ -125,7 +125,7 @@ function intentConsistency(intent, candidate, original) {
         !/(?:didn't|did not|hadn't|had not|never|weren't|were not|unfamiliar|had no idea|knew nothing)/i.test(candidate))
       failures.push("相手が知らなかったことが驚きの理由として表現されていません");
     if (/Three Kingdoms/i.test(original) &&
-        /(?:didn't|did not|weren't|were not|unfamiliar|not familiar|knew nothing)\\s+(?:(?:know|familiar with|about)\\s+)?(?:Chinese history|their history|the history of China)/i.test(candidate))
+        /(?:didn't|did not|weren't|were not|unfamiliar|not familiar|knew nothing)\s+(?:(?:know|familiar with|about)\s+)?(?:Chinese history|their history|the history of China)/i.test(candidate))
       failures.push("相手が知らなかった対象が「三国志」から「中国史全般」に変わっています");
   }
   // Preserve named topic; for this use case a correction must not generalize the Three Kingdoms into Chinese history.
