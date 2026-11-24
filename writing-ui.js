@@ -78,6 +78,22 @@ function feedback(data){
  if(data.alternative)add(box,'p','別の表現：'+data.alternative,'writing-ja');
  box.classList.remove('hide');
 }
+function showInitialGrammar(data){
+ const box=$('writingFeedback');box.replaceChildren();
+ add(box,'h3','文法の確認（意味の確定前）');
+ add(box,'div','添削対象：あなたが送信した原文','writing-subtitle');
+ add(box,'p',data.originalEnglish||'','writing-original');
+ const mistakes=Array.isArray(data.issues)?data.issues.filter(issue=>issue.kind==='grammar'):[];
+ if(!mistakes.length)add(box,'p','原文に一致する明確な文法ミスはまだ特定できませんでした。','writing-explain');
+ mistakes.forEach((issue,i)=>{
+  const item=add(box,'div','','writing-issue');
+  add(item,'div',(i+1)+'. 文法・表記','writing-issue-kind');
+  add(item,'div',issue.quote+' → '+issue.fix,'writing-issue-change');
+  add(item,'p',issue.reason,'writing-explain');
+ });
+ add(box,'p','意味を確認した後に、意図に合わせた修正文と自然な言い方を表示します。','writing-ja');
+ box.classList.remove('hide');
+}
 function clarificationPanel(question,options,onChoose){
  const el=$('writingClarification');
  el.replaceChildren();
@@ -121,8 +137,7 @@ async function check(intent='',original=null){
    }
    if(body.correctionVersion!=='3.2'||!Array.isArray(body.feedback?.issues)||body.feedback?.originalEnglish!==answer)throw new Error('Cloudflare Workerが旧バージョン、または添削対象が一致しません。最新のworker.jsをDeployしてください。');
    if(body.clarification && !intent && Array.isArray(body.clarification.options)){
-     $('writingFeedback').replaceChildren();
-     $('writingFeedback').classList.add('hide');
+     showInitialGrammar(body.feedback);
      clarificationPanel(body.clarification.question,body.clarification.options,selected=>{void check(selected,record);});
      $('writingStatus').textContent='文法の確認は完了しました。意味を選ぶと、意図に合わせた添削結果を表示します。';
      return;
