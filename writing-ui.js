@@ -50,26 +50,30 @@ function setMode(v){
 function feedback(data){
  const box=$('writingFeedback');box.replaceChildren();
  add(box,'h3','添削結果');
- add(box,'p','文法：'+(data.grammarAssessment||'確認済み')+' / 自然さ：'+(data.naturalnessAssessment||'確認済み'),'writing-eval');
- const section=(num,title,content,klass='writing-explain')=>{
-   if(!content)return;
-   add(box,'h4',num+' '+title,'writing-step-title');
-   add(box,'p',content,klass);
+ add(box,'p','文法：'+(data.grammarAssessment||'確認中')+' / 自然さ：'+(data.naturalnessAssessment||'確認中'),'writing-eval');
+ const part=(num,title,value,klass='writing-explain')=>{
+  add(box,'h4',num+' '+title,'writing-step-title');
+  add(box,'p',value||'説明が得られませんでした。',klass);
  };
- section('①','元の英文はどう伝わる？',data.originalMeaning||'');
- if(data.meaningDifference&&data.meaningDifference!=='意味のずれはありません。'){
-   add(box,'p','意図との違い：'+data.meaningDifference,'writing-meaning-difference');
+ part('①','あなたの英文はどう伝わる？',data.originalMeaning);
+ if(data.meaningDifference&& !/^(意味のずれは(確認できません|ありません))/.test(data.meaningDifference)){
+  add(box,'p','意味について：'+data.meaningDifference,'writing-meaning-difference');
  }
- section('②','どこが、なぜ間違っている？',data.errorBreakdown||data.grammarExplanation||'');
- if(data.grammarExplanation&&data.errorBreakdown){
-   add(box,'p','文法のルール：'+data.grammarExplanation,'writing-ja');
- }
- section('③','文法を直した英文（原文に近い形）',data.minimalCorrection||data.corrected||'','writing-corrected');
- section('④','より自然な英文',data.corrected||'','writing-corrected');
+ add(box,'h4','② どこを、なぜ直す？','writing-step-title');
+ if(Array.isArray(data.issues)){
+   if(!data.issues.length)add(box,'p','具体的に指摘できる誤りはありません。必要なら語句の自然さを見直しましょう。','writing-explain');
+   data.issues.forEach((issue,i)=>{
+    const item=add(box,'div','','writing-issue');
+    add(item,'div',(i+1)+'. '+(issue.kind==='grammar'?'文法・表記':'表現の改善'),'writing-issue-kind');
+    add(item,'div',issue.quote+' → '+issue.fix,'writing-issue-change');
+    add(item,'p',issue.reason,'writing-explain');
+   });
+ }else add(box,'p','古い添削エンジンからの応答です。Cloudflare Workerを最新版に更新してください。','writing-meaning-difference');
+ part('③','まず文法を直すと',data.minimalCorrection||data.corrected,'writing-corrected');
+ part('④','会話でより自然に言うと',data.corrected,'writing-corrected');
  if(data.translation)add(box,'p','日本語訳：'+data.translation,'writing-ja');
  if(data.naturalnessExplanation)add(box,'p',data.naturalnessExplanation,'writing-explain');
- if(data.alternative)section('＋','別の言い方',data.alternative,'writing-explain');
- if(data.encouragement)add(box,'p',data.encouragement,'writing-ja');
+ if(data.alternative)add(box,'p','別の表現：'+data.alternative,'writing-ja');
  box.classList.remove('hide');
 }
 async function check(){
@@ -92,14 +96,15 @@ async function check(){
      if(body.error==='ai_invalid_output')throw new Error('添削結果を読み取れませんでした。もう一度お試しください。');
      throw new Error('添削に失敗しました（'+response.status+'）。');
    }
+   if(body.correctionVersion!=='3.0'||!Array.isArray(body.feedback?.issues))throw new Error('Cloudflare Workerが旧バージョンです。新しいworker.jsをDeployしてください。');
    record.review=body.feedback;feedback(body.feedback);
-   $('writingStatus').textContent='AI添削が完了しました。'+(body.correctionVersion?'（添削エンジン '+body.correctionVersion+'）':'（Workerが旧版の可能性があります）');
+   $('writingStatus').textContent='AI添削が完了しました（添削エンジン 3.0）';
  }catch(e){
    $('writingStatus').textContent=e.message;
    $('writingExample').classList.toggle('hide',mode!=='guided');
    if(mode==='guided')$('writingExampleText').textContent='参考例：'+current.example+'（正解は一通りではありません）';
  }finally{
-   records.push(record);save();renderStats();busy=false;$('writingSubmit').disabled=false;
+   if(record.review){records.push(record);save();renderStats();}busy=false;$('writingSubmit').disabled=false;
  }
 }
 $('writingOpen').onclick=()=>{show('writing');renderStats();};
