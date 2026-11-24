@@ -286,7 +286,17 @@ export default {
           if (issues.some(item => item.quote.toLowerCase() === issue.quote.toLowerCase())) continue;
           issues.push(issue);
         }
-        let errors = performPostCheck(body, parsed, issues);
+        // Do not validate a speculative rewrite before the learner has clarified an ambiguous meaning.
+        let needsClarification = !body.intent && body.mode === "free" && parsed.clarificationNeeded;
+        let question = parsed.clarificationQuestion.slice(0, 200);
+        let options = parsed.clarificationOptions.filter(x => typeof x === "string" && x.trim()).slice(0, 3).map(x => x.slice(0, 180));
+        if (!body.intent && body.mode === "free" && /\bwondered\s+that\b/i.test(body.answer)) {
+          needsClarification = true;
+          question = "ここではどちらの意味を伝えたいですか？";
+          options = ["それが本当に事実なのか疑問に思った", "そのことを知らなかった相手に驚いた"];
+        }
+        if (needsClarification && options.length < 2) needsClarification = false;
+        let errors = needsClarification ? [] : performPostCheck(body, parsed, issues);
         if (errors.length && body.intent) {
           // Exactly one targeted regeneration; retains the learner's original and confirmed intent.
           const retryPrompt = [
@@ -320,28 +330,27 @@ export default {
           }
         }
         if (errors.length) {
-          // Do not present a known-inconsistent rewrite as a completed correction.
-          return response({ ok: false, error: "revision_inconsistent", details: errors }, 422, origin);
+          // Preserve the successful grammar analysis. Never present an inconsistent rewrite as a verified answer.
+          const safeIssues = issues.filter(x => x.kind === "grammar").slice(0, 6);
+          return response({
+            ok: true,
+            partial: true,
+            correctionVersion: "3.4",
+            originalEnglish: body.answer,
+            confirmedIntent: body.intent || "",
+            issues: safeIssues,
+            reviewProblems: errors.slice(0, 5)
+          }, 200, origin);
         }
         const feedback = Object.fromEntries(fields.map(field => [field, parsed[field].slice(0, 1600)]));
         feedback.issues = issues.slice(0, 6);
         feedback.originalEnglish = body.answer;
-        // A selected intent must never cause another question.
-        let needsClarification = !body.intent && body.mode === "free" && parsed.clarificationNeeded;
-        let question = parsed.clarificationQuestion.slice(0, 200);
-        let options = parsed.clarificationOptions.filter(x => typeof x === "string" && x.trim()).slice(0, 3).map(x => x.slice(0, 180));
-        // Guard against a common ambiguity the model previously answered incorrectly.
-        if (!body.intent && body.mode === "free" && /\bwondered\s+that\b/i.test(body.answer)) {
-          needsClarification = true;
-          question = "ここではどちらの意味を伝えたいですか？";
-          options = ["それが本当に事実なのか疑問に思った", "そのことを知らなかった相手に驚いた"];
-        }
-        if (needsClarification && options.length < 2) needsClarification = false;
         return response({
           ok: true,
+          partial: false,
           feedback,
           clarification: needsClarification ? { question, options } : null,
-          correctionVersion: "3.3"
+          correctionVersion: "3.4"
         }, 200, origin);
       } catch (err) {
         console.error("Workers AI correction failed:", String(err).slice(0, 250));
@@ -352,7 +361,7 @@ export default {
       return response({ ok: false, error: "not_configured" }, 503, origin);
     }
     if (request.method === "GET" && path === "/health") {
-      return response({ ok: true, connected: true, correctionVersion: "3.2" }, 200, origin);
+      return response({ ok: true, connected: true, correctionVersion: "3.4" }, 200, origin);
     }
     if (request.method !== "POST" || path !== "/sync") {
       return response({ ok: false, error: "not_found" }, 404, origin);
