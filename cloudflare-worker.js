@@ -136,13 +136,13 @@ export default {
           required: ["corrected", "translation", "grammarAssessment", "naturalnessAssessment", "grammarExplanation", "naturalnessExplanation", "alternative", "encouragement"],
           additionalProperties: false
         };
-        const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fast", {
+        const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
           messages: [
             { role: "system", content: systemText },
             { role: "user", content: userData }
           ],
           response_format: { type: "json_schema", json_schema: schema },
-          max_tokens: 850,
+          max_tokens: 1200,
           temperature: 0.2
         });
         let parsed = result?.response;
