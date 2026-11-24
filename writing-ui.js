@@ -95,6 +95,30 @@ function showInitialGrammar(data){
  add(box,'p','意味を確認した後に、意図に合わせた修正文と自然な言い方を表示します。','writing-ja');
  box.classList.remove('hide');
 }
+function showPartialReview(data,intent,record){
+ const box=$('writingFeedback');box.replaceChildren();
+ add(box,'h3','文法の確認結果');
+ add(box,'div','添削した元の英文','writing-subtitle');
+ add(box,'p',data.originalEnglish||record.answer,'writing-original');
+ if(intent){add(box,'div','確認した意図','writing-subtitle');add(box,'p',intent,'writing-intent-confirmed');}
+ add(box,'p','文法の指摘は確認できましたが、意図に合う修正文を検証できませんでした。不確かな修正文は表示していません。','writing-meaning-difference');
+ const items=Array.isArray(data.issues)?data.issues:[];
+ items.forEach((issue,i)=>{
+  const item=add(box,'div','','writing-issue');
+  add(item,'div',(i+1)+'. 文法・表記','writing-issue-kind');
+  add(item,'div',issue.quote+' → '+issue.fix,'writing-issue-change');
+  add(item,'p',issue.reason,'writing-explain');
+ });
+ if(Array.isArray(data.reviewProblems)&&data.reviewProblems.length){
+  add(box,'div','修正文を保留した理由','writing-subtitle');
+  data.reviewProblems.forEach(x=>add(box,'p','・'+x,'writing-ja'));
+ }
+ const retry=add(box,'button','同じ意図で修正文を再生成','btn wide');
+ retry.type='button';
+ retry.onclick=()=>{void check(intent,record);};
+ box.classList.remove('hide');
+ box.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
 function clarificationPanel(question,options,onChoose){
  const el=$('writingClarification');
  el.replaceChildren();
@@ -137,7 +161,14 @@ async function check(intent='',original=null){
      if(body.error==='ai_invalid_output')throw new Error('添削結果を読み取れませんでした。もう一度お試しください。');
      throw new Error('添削に失敗しました（'+response.status+'）。');
    }
-   if(body.correctionVersion!=='3.3'||!Array.isArray(body.feedback?.issues)||body.feedback?.originalEnglish!==answer)throw new Error('Cloudflare Workerが旧バージョン、または添削対象が一致しません。最新のworker.jsをDeployしてください。');
+   if(body.correctionVersion!=='3.4')throw new Error('Cloudflare Workerが旧バージョンです。最新のworker.jsをDeployしてください。');
+   if(body.partial===true){
+     if(body.originalEnglish!==answer||!Array.isArray(body.issues))throw new Error('添削対象の原文が一致しません。');
+     showPartialReview(body,intent,record);
+     $('writingStatus').textContent='文法の確認はできましたが、修正文は未確定です。必要に応じて再生成してください。';
+     return;
+   }
+   if(!Array.isArray(body.feedback?.issues)||body.feedback?.originalEnglish!==answer)throw new Error('添削対象の原文が一致しません。');
    if(body.clarification && !intent && Array.isArray(body.clarification.options)){
      showInitialGrammar(body.feedback);
      clarificationPanel(body.clarification.question,body.clarification.options,selected=>{void check(selected,record);});
@@ -147,7 +178,7 @@ async function check(intent='',original=null){
    record.intent=intent||'';
    record.review=body.feedback;
    feedback(body.feedback,record.intent);
-   $('writingStatus').textContent='AI添削が完了しました（添削エンジン 3.3）';
+   $('writingStatus').textContent='AI添削が完了しました（添削エンジン 3.4）';
  }catch(e){
    $('writingStatus').textContent=e.message;
    $('writingExample').classList.toggle('hide',record.mode!=='guided');
