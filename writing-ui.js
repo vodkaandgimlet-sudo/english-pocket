@@ -93,7 +93,7 @@ async function check(){
      throw new Error('添削に失敗しました（'+response.status+'）。');
    }
    record.review=body.feedback;feedback(body.feedback);
-   $('writingStatus').textContent='AI添削が完了しました。';
+   $('writingStatus').textContent='AI添削が完了しました。'+(body.correctionVersion?'（添削エンジン '+body.correctionVersion+'）':'（Workerが旧版の可能性があります）');
  }catch(e){
    $('writingStatus').textContent=e.message;
    $('writingExample').classList.toggle('hide',mode!=='guided');
