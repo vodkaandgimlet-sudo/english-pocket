@@ -50,6 +50,7 @@ function setMode(v){
 function feedback(data){
  const box=$('writingFeedback');box.replaceChildren();
  add(box,'h3','添削結果');
+ if(data.originalEnglish){add(box,'div','添削対象：あなたが送信した原文','writing-subtitle');add(box,'p',data.originalEnglish,'writing-original');}
  add(box,'p','文法：'+(data.grammarAssessment||'確認中')+' / 自然さ：'+(data.naturalnessAssessment||'確認中'),'writing-eval');
  const part=(num,title,value,klass='writing-explain')=>{
   add(box,'h4',num+' '+title,'writing-step-title');
@@ -61,7 +62,7 @@ function feedback(data){
  }
  add(box,'h4','② どこを、なぜ直す？','writing-step-title');
  if(Array.isArray(data.issues)){
-   if(!data.issues.length)add(box,'p','具体的に指摘できる誤りはありません。必要なら語句の自然さを見直しましょう。','writing-explain');
+   if(!data.issues.length)add(box,'p','原文に一致する具体的な修正箇所を特定できませんでした。③・④は参考案として確認してください。誤りがないと断定しているわけではありません。','writing-explain');
    data.issues.forEach((issue,i)=>{
     const item=add(box,'div','','writing-issue');
     add(item,'div',(i+1)+'. '+(issue.kind==='grammar'?'文法・表記':'表現の改善'),'writing-issue-kind');
@@ -96,9 +97,9 @@ async function check(){
      if(body.error==='ai_invalid_output')throw new Error('添削結果を読み取れませんでした。もう一度お試しください。');
      throw new Error('添削に失敗しました（'+response.status+'）。');
    }
-   if(body.correctionVersion!=='3.0'||!Array.isArray(body.feedback?.issues))throw new Error('Cloudflare Workerが旧バージョンです。新しいworker.jsをDeployしてください。');
+   if(body.correctionVersion!=='3.1'||!Array.isArray(body.feedback?.issues)||body.feedback?.originalEnglish!==answer)throw new Error('Cloudflare Workerが旧バージョン、または添削対象が一致しません。最新のworker.jsをDeployしてください。');
    record.review=body.feedback;feedback(body.feedback);
-   $('writingStatus').textContent='AI添削が完了しました（添削エンジン 3.0）';
+   $('writingStatus').textContent='AI添削が完了しました（添削エンジン 3.1）';
  }catch(e){
    $('writingStatus').textContent=e.message;
    $('writingExample').classList.toggle('hide',mode!=='guided');
