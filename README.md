@@ -74,23 +74,30 @@ https://app.notion.com/p/4182b8a1b3dd81f3aeaac6a78ab17ce8
 ### 保存するデータ
 1回の5問終了ごとに、日付、問題分野、回答数、正解数、正答率、間違えた問題、および各問題の回答・正解をNotionの新しい「英語ポケット｜学習ログ」データベースに記録します。
 
-## v1.7 英作文・AI添削
-- 「お題に答える」：日本語から英語への英作文（30問。友達・仕事・旅行）
-- 「自由に作文」：英語で自由に記述し、文法・表現の自然さ・改善例のフィードバックを受ける
-- 自然な言い回しと文法上の正確さを分けて日本語で解説
-- 添削履歴はホーム画面アプリ内の localStorage に保存。Notion学習ログへの自動登録は従来の4択クイズのみ
-- **英作文のAI添削を使うには Cloudflare Worker の更新と別途OpenAI APIキー登録が必要**。GitHub Pagesのフロントエンド更新だけではAI添削は動かない
+## v1.8 英作文・Cloudflare Workers AI（無料枠）
+- 英作文の2モード：日本語のお題を英語で回答（30問）、自由英文をAI添削。
+- 文法・自然さを分けて添削し、日本語訳・改善案を表示。Cloudflareの小型AIモデルのため、判定の誤りが起きる可能性があります。
+- **OpenAI APIキーは不要**。Cloudflare Workers AIを使います。
+- 無料枠：Cloudflare Workers AIはFreeプランで合計10,000 Neurons/日（モデルによって消費量が異なる）。超過分の処理は失敗し、有料プランへの変更は自動では行われません。最新の制限はCloudflareの公式料金表を確認してください。
+- 既存のNotionへの5問終了時の同期は変更しません。英作文の入力・添削内容は端末内に保存され、Notionには自動保存されません。
 
-### Cloudflare Workerを更新する
-1. Cloudflare → Workers → `english-pocket-sync` → Edit code を開く
-2. GitHub内の `cloudflare-worker.js` をすべてコピーし、現在のWorkerコードを丸ごと置き換えて Deploy する
-3. Worker → Settings → Variables and Secrets → Add variable
-4. 名前 `OPENAI_API_KEY`、Type **Secret**、Value にOpenAI APIプラットフォームで自分が作成したAPIキーを貼り付けて保存・デプロイ
-5. 既存の `NOTION_TOKEN`、`SYNC_KEY`、`NOTION_DATA_SOURCE_ID` はそのまま保持する
-6. iPhoneの英語ポケットアプリを閉じて再起動し、英作文で短文を入力して添削を試す
+### 既存WorkerにAIバインディングを追加（初回）
+1. [Cloudflare Dashboard](https://dash.cloudflare.com/) → Workers & Pages → Worker `english-pocket-sync` を選択します。
+2. Settings → Bindings（表示によっては右側の `Bindings` タブ）→ Add binding をクリックします。
+3. `Workers AI` を選択し、Variable name / Binding name を **`AI`** として保存・デプロイします。これはSecretではありません。APIキーも不要です。
+4. GitHubにある [`cloudflare-worker.js`](./cloudflare-worker.js) の全文をWorkerの Edit code に貼って **Deploy** します。
+5. **既存の** `NOTION_TOKEN`、`SYNC_KEY`、`NOTION_DATA_SOURCE_ID` はそのまま残します。`OPENAI_API_KEY` は不要です。すでに設定した場合は削除できます。
+6. iPhoneの英語ポケットを一度終了し、更新後のアプリを開いて、英作文に短文を入力して添削を確認します。既存の「記録」画面に保存済みのWorker URLと同期専用キーは流用します。
 
-- OpenAI APIはChatGPTの利用プランとは別の従量課金サービスです。利用前にAPIプラットフォームの請求設定、予算・利用上限を確認してください。
-- APIキーの実値をGitHub・GitHub Pages・Notion・ChatGPTチャットに貼らないこと。**Cloudflare WorkerのSecretのみに登録**してください。
-- 送信した英文と日本語のお題は、添削のためにCloudflareを経由してOpenAI APIへ送信されます。会社の機密情報、個人情報、顧客情報を入力しないでください。
-- 入力は最大500文字。英作文履歴はこの端末にローカル保存され、書いた英文は従来のNotion学習ログに自動送信しません。
-- 既存の4択クイズのNotion同期は引き続き利用できます。
+### モデル・実装
+- Workerの`/correct` は `env.AI.run('@cf/meta/llama-3.1-8b-instruct', ...)` を使用します。
+- Cloudflare Workers AIのJSON Modeを使い、`corrected`、`translation`、`grammarAssessment`、`naturalnessAssessment`、`grammarExplanation`、`naturalnessExplanation`、`alternative`、`encouragement` の形式で結果を返します。
+- Workerへのリクエストは既存の `X-Sync-Key` で認証します。ユーザーに入力させるのは既存の同期専用キーのみです。
+- 英文と日本語のお題は添削のためCloudflare Workers AIに送信されます。機密情報・個人情報を入力しないでください。
+- アプリ・GitHubに認証用の値を追加しないでください。
+
+### 不具合時
+- 「AIバインディングを追加してください」: Worker設定に`AI`という名前のWorkers AI Bindingがあるか、最新WorkerコードがDeployされているか確認。
+- HTTP 502: 推論・AI出力エラーの可能性があります。短い英文で再試行してください。
+- 上限超過時: 無料プランでは、その日のAI処理が失敗することがあります（無料枠のリセットはUTC日付基準）。
+- Notion同期が失敗した場合は、従来の`NOTION_TOKEN`、`SYNC_KEY`、`NOTION_DATA_SOURCE_ID`の設定も確認してください。
