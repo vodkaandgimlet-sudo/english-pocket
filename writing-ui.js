@@ -34,6 +34,7 @@ function next(){
  $('writingFeedback').classList.add('hide');
  $('writingExample').classList.add('hide');
  $('writingStatus').textContent='';
+ $('writingClarification').classList.add('hide');
 }
 function setMode(v){
  mode=v;
@@ -77,18 +78,39 @@ function feedback(data){
  if(data.alternative)add(box,'p','別の表現：'+data.alternative,'writing-ja');
  box.classList.remove('hide');
 }
-async function check(){
+function clarificationPanel(question,options,onChoose){
+ const el=$('writingClarification');
+ el.replaceChildren();
+ add(el,'h3','伝えたい意味を確認させてください');
+ add(el,'p',question||'どちらの意味で書きましたか？','writing-explain');
+ options.forEach((option,i)=>{
+  const button=add(el,'button',String.fromCharCode(65+i)+'. '+option,'writing-intent-option');
+  button.type='button';button.onclick=()=>onChoose(option);
+ });
+ const custom=add(el,'textarea','','writing-intent-custom');
+ custom.placeholder='どちらでもない場合、言いたかったことを日本語で入力';
+ custom.maxLength=300;custom.rows=2;
+ const choose=add(el,'button','この意味で添削する','btn wide');
+ choose.type='button';choose.onclick=()=>{
+  if(custom.value.trim())onChoose(custom.value.trim());
+  else $('writingStatus').textContent='伝えたかった意味を入力してください。';
+ };
+ el.classList.remove('hide');
+ el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+async function check(intent='',original=null){
  if(busy)return;
- const answer=$('writingInput').value.trim();
+ const answer=original?.answer||$('writingInput').value.trim();
  if(!answer){$('writingStatus').textContent='英文を入力してください。';return;}
  if(answer.length>500){$('writingStatus').textContent='500文字以内で入力してください。';return;}
  const prefs=safeUrl();
- const record={date:new Date().toLocaleDateString('sv-SE'),mode,promptId:mode==='guided'?current.id:null,ja:mode==='guided'?current.ja:null,answer,review:null};
+ const record=original||{date:new Date().toLocaleDateString('sv-SE'),mode,promptId:mode==='guided'?current.id:null,ja:mode==='guided'?current.ja:null,answer,review:null};
  busy=true;$('writingSubmit').disabled=true;
- $('writingStatus').textContent='添削しています…';
+ $('writingClarification').classList.add('hide');
+ $('writingStatus').textContent=intent?'選んだ意味に合わせて添削中…':'添削しています…';
  try{
    if(!prefs)throw new Error('先に「記録」からNotion同期のWorker URLと同期キーを設定してください。');
-   const response=await fetch(prefs.origin+'/correct',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Key':prefs.secret},body:JSON.stringify({mode,answer,ja:record.ja,reference:mode==='guided'?current.example:null,context:mode==='guided'?current.goal:null}),cache:'no-store'});
+   const response=await fetch(prefs.origin+'/correct',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Key':prefs.secret},body:JSON.stringify({mode:record.mode,answer,ja:record.ja,reference:record.mode==='guided'?(prompts.find(x=>x.id===record.promptId)?.example||''):null,intent:intent||null}),cache:'no-store'});
    const body=await response.json().catch(()=>({}));
    if(!response.ok||!body.ok){
      if(response.status===503&&body.error==='ai_not_configured')throw new Error('Cloudflare WorkerにWorkers AIの「AI」バインディングを追加してください。');
@@ -97,15 +119,25 @@ async function check(){
      if(body.error==='ai_invalid_output')throw new Error('添削結果を読み取れませんでした。もう一度お試しください。');
      throw new Error('添削に失敗しました（'+response.status+'）。');
    }
-   if(body.correctionVersion!=='3.1'||!Array.isArray(body.feedback?.issues)||body.feedback?.originalEnglish!==answer)throw new Error('Cloudflare Workerが旧バージョン、または添削対象が一致しません。最新のworker.jsをDeployしてください。');
-   record.review=body.feedback;feedback(body.feedback);
-   $('writingStatus').textContent='AI添削が完了しました（添削エンジン 3.1）';
+   if(body.correctionVersion!=='3.2'||!Array.isArray(body.feedback?.issues)||body.feedback?.originalEnglish!==answer)throw new Error('Cloudflare Workerが旧バージョン、または添削対象が一致しません。最新のworker.jsをDeployしてください。');
+   if(body.clarification && !intent && Array.isArray(body.clarification.options)){
+     $('writingFeedback').replaceChildren();
+     $('writingFeedback').classList.add('hide');
+     clarificationPanel(body.clarification.question,body.clarification.options,selected=>{void check(selected,record);});
+     $('writingStatus').textContent='文法の確認は完了しました。意味を選ぶと、意図に合わせた添削結果を表示します。';
+     return;
+   }
+   record.intent=intent||'';
+   record.review=body.feedback;
+   feedback(body.feedback);
+   $('writingStatus').textContent='AI添削が完了しました（添削エンジン 3.2）';
  }catch(e){
    $('writingStatus').textContent=e.message;
-   $('writingExample').classList.toggle('hide',mode!=='guided');
-   if(mode==='guided')$('writingExampleText').textContent='参考例：'+current.example+'（正解は一通りではありません）';
+   $('writingExample').classList.toggle('hide',record.mode!=='guided');
+   if(record.mode==='guided')$('writingExampleText').textContent='参考例：'+(prompts.find(x=>x.id===record.promptId)?.example||'')+'（正解は一通りではありません）';
  }finally{
-   if(record.review){records.push(record);save();renderStats();}busy=false;$('writingSubmit').disabled=false;
+   if(record.review){records.push(record);save();renderStats();}
+   busy=false;$('writingSubmit').disabled=false;
  }
 }
 $('writingOpen').onclick=()=>{show('writing');renderStats();};
@@ -113,7 +145,7 @@ $('writingTabGuided').onclick=()=>setMode('guided');
 $('writingTabFree').onclick=()=>setMode('free');
 $('writingCategory').onchange=e=>{category=e.target.value;next()};
 $('writingNext').onclick=next;
-$('writingSubmit').onclick=check;
+$('writingSubmit').onclick=()=>{void check();};
 $('writingExampleToggle').onclick=()=>{if(mode!=='guided')return;$('writingExampleText').textContent='参考例：'+current.example+'（別の自然な英文も正解です）';$('writingExample').classList.toggle('hide')};
 $('writingCopy').onclick=()=>{const txt=records.filter(x=>x.review).slice(-30).map(x=>x.answer+'\n→ '+x.review.corrected).join('\n\n');navigator.clipboard?.writeText(txt)};
 document.querySelectorAll('[data-nav="writing"]').forEach(b=>b.addEventListener('click',renderStats));
