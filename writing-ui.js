@@ -7,6 +7,20 @@ const $=id=>document.getElementById(id);
 let records=[];
 try{const v=JSON.parse(localStorage.getItem(key)||'[]');if(Array.isArray(v))records=v;}catch(e){}
 let current=null,category='友達',mode='guided',busy=false;
+const DRAFT_KEY='english-pocket-writing-drafts-v1';
+let drafts={guided:'',free:''};
+try{
+ const stored=JSON.parse(localStorage.getItem(DRAFT_KEY)||'{}');
+ if(stored&&typeof stored==='object'){
+  for(const name of ['guided','free']){
+   if(typeof stored[name]==='string')drafts[name]=stored[name].slice(0,500);
+  }
+ }
+}catch(e){}
+function saveDraft(){
+ drafts[mode]=$('writingInput').value;
+ try{localStorage.setItem(DRAFT_KEY,JSON.stringify(drafts));}catch(e){}
+}
 const save=()=>{try{localStorage.setItem(key,JSON.stringify(records.slice(-150)))}catch(e){}};
 const add=(parent,tag,text,klass)=>{const e=document.createElement(tag);if(klass)e.className=klass;e.textContent=text;parent.append(e);return e};
 const safeUrl=()=>{
@@ -30,6 +44,8 @@ function next(){
  $('writingJapanese').textContent=current.ja;
  $('writingGrammar').textContent='学習ポイント：'+current.grammar;
  $('writingInput').value='';
+ drafts.guided='';
+ saveDraft();
  $('writingFeedback').replaceChildren();
  $('writingFeedback').classList.add('hide');
  $('writingExample').classList.add('hide');
@@ -37,7 +53,11 @@ function next(){
  $('writingClarification').classList.add('hide');
 }
 function setMode(v){
+ if(busy)return;
+ saveDraft();
  mode=v;
+ $('writingInput').value=drafts[v]||'';
+ $('writingClarification').classList.add('hide');
  $('writingGuided').classList.toggle('hide',v!=='guided');
  $('writingFreeHint').classList.toggle('hide',v!=='free');
  $('writingCategory').classList.toggle('hide',v!=='guided');
@@ -189,6 +209,7 @@ async function check(intent='',original=null){
  }
 }
 $('writingOpen').onclick=()=>{show('writing');renderStats();};
+$('writingInput').addEventListener('input',saveDraft);
 $('writingTabGuided').onclick=()=>setMode('guided');
 $('writingTabFree').onclick=()=>setMode('free');
 $('writingCategory').onchange=e=>{category=e.target.value;next()};
