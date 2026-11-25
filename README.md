@@ -101,3 +101,30 @@ https://app.notion.com/p/4182b8a1b3dd81f3aeaac6a78ab17ce8
 - HTTP 502: 推論・AI出力エラーの可能性があります。短い英文で再試行してください。
 - 上限超過時: 無料プランでは、その日のAI処理が失敗することがあります（無料枠のリセットはUTC日付基準）。
 - Notion同期が失敗した場合は、従来の`NOTION_TOKEN`、`SYNC_KEY`、`NOTION_DATA_SOURCE_ID`の設定も確認してください。
+
+## v2.7 英作文・弱点ログのNotion自動同期
+
+「お題に答える」「自由に作文」の両モードで、AI添削が正常に確定した場合だけ個人用Notionの英作文専用DBに自動保存します。
+
+- DB名：英語ポケット｜英作文・弱点ログ
+- NotionデータソースID：`4237e8a4-a9e3-8116-8392-000b28c53fcd`
+- DB： https://app.notion.com/p/4237e8a4a9e381f4b017e637f1c31212
+- 保存する内容：学習日、原文、モード、課題/確認した意図、文法指摘、最小限の修正文、自然な英文、日本語訳、復習テーマ、復習状況（初期値：未復習）、添削エンジン
+- 添削が保留になった場合、意図を選ぶ途中では保存せず、確定後に記録します。
+- 未送信データはiPhone内の別キューに保管して再送信可能です。通信復旧時または「未送信を再送信」で同期します。
+- 記録IDに基づく重複チェックがあります。以前の端末内の英作文履歴は自動バックフィルしません。
+- 既存の4択問題「英語ポケット｜学習ログ」への同期には影響しません。
+
+### 設定（Cloudflare更新）
+
+1. Notion個人スペースのDB「英語ポケット｜英作文・弱点ログ」を開き、ページ右上の `...` → `コネクト` / `Connections` → `English Pocket Sync` を追加して、API接続にアクセス権を付与します。DB側に表示される操作名はNotion UIの言語により異なります。
+2. Cloudflare → Workers & Pages → `english-pocket-sync` → Settings → Variables and secrets → Add variableで、`NOTION_WRITING_DATA_SOURCE_ID`（通常のテキスト変数）を追加し、値を `4237e8a4-a9e3-8116-8392-000b28c53fcd` にしてDeployします。
+3. 既存の `NOTION_TOKEN`、`NOTION_DATA_SOURCE_ID`、`SYNC_KEY`、Workers AI binding `AI` は**変更しません**。
+4. GitHubの `cloudflare-worker.js` 全文をCloudflare Workerのコードに貼り直してDeployします。
+5. iPhoneのアプリを再起動して、英作文を1件添削します。表示される「英作文のNotion同期が完了しました」を確認し、Notionの新DBに1行登録されたかを確認してください。
+
+※ 英作文のNotion自動同期には、既存の「記録」画面に保存済みのWorker URLとSYNC_KEYを使います。NotionのAPIトークンをiPhoneに入力しないでください。
+
+### 英会話レッスンへの反映
+
+Notionの12週間カリキュラムを基本とし、レッスン開始時に①レッスン進捗DB、②英作文・弱点ログの未復習行、③4択学習ログの苦手分野を参照し、4分程度の前回復習と会話練習の質問に反映します。**この読み取り処理は英語ポケットのコードには含まれません**。ChatGPT音声レッスン側から個人用Notionを参照する必要があります。
