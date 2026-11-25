@@ -22,6 +22,59 @@ function saveDraft(){
  try{localStorage.setItem(DRAFT_KEY,JSON.stringify(drafts));}catch(e){}
 }
 const save=()=>{try{localStorage.setItem(key,JSON.stringify(records.slice(-150)))}catch(e){}};
+const QUEUE_KEY='english-pocket-writing-notion-queue-v1';
+let pending=[];
+try{const saved=JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]');if(Array.isArray(saved))pending=saved;}catch(e){}
+let sending=false;
+function storePending(){try{localStorage.setItem(QUEUE_KEY,JSON.stringify(pending.slice(-200)))}catch(e){}}
+function showWritingSync(text=''){
+ const e=$('writingSyncStatus');if(e)e.textContent=text||(pending.length?'Notion未送信 '+pending.length+'件':'英作文のNotion同期：待機中');
+}
+function topicsFromReview(review){
+ const tags=new Set();
+ for(const issue of review.issues||[]){
+  const t=(issue.quote||'')+' '+(issue.fix||'')+' '+(issue.reason||'');
+  if(/weren't|wasn't|isn't|aren't|\bbe動詞\b|一般動詞/i.test(t))tags.add('be動詞・一般動詞');
+  if(/didn't|doesn't|don't|否定|疑問/i.test(t))tags.add('疑問文・否定文');
+  if(/現在完了|have been|has been/i.test(t))tags.add('現在完了');
+  if(/過去形|未来形|時制|進行形/i.test(t))tags.add('時制');
+  if(/前置詞|\b(in|on|at|for|to|with)\b/i.test(t))tags.add('前置詞');
+  if(/語順|主語|目的語/i.test(t))tags.add('語順');
+  if(issue.kind==='wording'||/単語|語彙|表現|大文字/i.test(t))tags.add('語彙・表現');
+ }
+ if(!tags.size)tags.add('その他');
+ return [...tags].slice(0,8);
+}
+function enqueueWriting(record){
+ if(!record.review||record.syncQueued)return;
+ const review=record.review;
+ const id=record.syncId||(typeof crypto.randomUUID==='function'?crypto.randomUUID():'w'+Date.now()+Math.random().toString(36).slice(2));
+ record.syncId=id;
+ record.syncQueued=true;
+ const reviewText=(review.issues||[]).map(x=>(x.kind==='wording'?'表現':'文法')+'：'+x.quote+' → '+x.fix+'／'+x.reason).join('\n');
+ pending.push({id,date:record.date,mode:record.mode,answer:record.answer,intent:record.mode==='guided'?(record.ja||''):(record.intent||''),reviewText:reviewText.slice(0,1800),minimalCorrection:review.minimalCorrection||review.corrected,corrected:review.corrected,translation:review.translation,topics:topicsFromReview(review),engine:'3.4'});
+ storePending();showWritingSync('英作文をNotion送信待ちに追加しました（'+pending.length+'件）');
+ void flushWriting();
+}
+async function flushWriting(){
+ if(sending||!pending.length||!navigator.onLine)return;
+ const settings=safeUrl();if(!settings){showWritingSync('Notion未送信 '+pending.length+'件：記録画面で同期設定を確認してください');return;}
+ sending=true;
+ try{
+  while(pending.length){
+   const response=await fetch(settings.origin+'/writing-sync',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Key':settings.secret},body:JSON.stringify(pending[0]),cache:'no-store'});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok||!data.ok){
+    if(data.error==='writing_not_configured')throw new Error('Cloudflareに英作文DBのIDを設定してください');
+    throw new Error('送信待ち（HTTP '+response.status+'）');
+   }
+   pending.shift();storePending();
+   showWritingSync('英作文のNotion同期が完了しました');
+  }
+ }catch(e){showWritingSync('Notion未送信 '+pending.length+'件：'+e.message);}
+ finally{sending=false;}
+}
+
 const add=(parent,tag,text,klass)=>{const e=document.createElement(tag);if(klass)e.className=klass;e.textContent=text;parent.append(e);return e};
 const safeUrl=()=>{
   try{const obj=JSON.parse(localStorage.getItem('english-pocket-sync-v1')||'{}');
@@ -197,6 +250,7 @@ async function check(intent='',original=null){
    }
    record.intent=intent||'';
    record.review=body.feedback;
+   enqueueWriting(record);
    feedback(body.feedback,record.intent);
    $('writingStatus').textContent='AI添削が完了しました（添削エンジン 3.4）';
  }catch(e){
@@ -204,7 +258,7 @@ async function check(intent='',original=null){
    $('writingExample').classList.toggle('hide',record.mode!=='guided');
    if(record.mode==='guided')$('writingExampleText').textContent='参考例：'+(prompts.find(x=>x.id===record.promptId)?.example||'')+'（正解は一通りではありません）';
  }finally{
-   if(record.review){records.push(record);save();renderStats();}
+   if(record.review){if(!records.includes(record)){records.push(record);save();renderStats();}}
    busy=false;$('writingSubmit').disabled=false;
  }
 }
@@ -218,5 +272,8 @@ $('writingSubmit').onclick=()=>{void check();};
 $('writingExampleToggle').onclick=()=>{if(mode!=='guided')return;$('writingExampleText').textContent='参考例：'+current.example+'（別の自然な英文も正解です）';$('writingExample').classList.toggle('hide')};
 $('writingCopy').onclick=()=>{const txt=records.filter(x=>x.review).slice(-30).map(x=>x.answer+'\n→ '+x.review.corrected).join('\n\n');navigator.clipboard?.writeText(txt)};
 document.querySelectorAll('[data-nav="writing"]').forEach(b=>b.addEventListener('click',renderStats));
-next();setMode('guided');renderStats();
+$('writingSyncNow').onclick=()=>{void flushWriting();};
+window.addEventListener('online',()=>{void flushWriting();});
+next();setMode('guided');renderStats();showWritingSync();
+void flushWriting();
 })();
