@@ -1,6 +1,6 @@
 // English Pocket -> Notion. Deploy this file as a Cloudflare Worker.
 // Configure secret variables in Cloudflare (never in GitHub):
-// NOTION_TOKEN, SYNC_KEY, NOTION_DATA_SOURCE_ID. Add Workers AI binding named AI for /correct.
+// NOTION_TOKEN, SYNC_KEY, NOTION_DATA_SOURCE_ID, NOTION_WRITING_DATA_SOURCE_ID. Add Workers AI binding AI.
 const ALLOWED_ORIGIN = "https://vodkaandgimlet-sudo.github.io";
 const NOTION_VERSION = "2025-09-03";
 const modeLabels = {
@@ -355,6 +355,59 @@ export default {
       } catch (err) {
         console.error("Workers AI correction failed:", String(err).slice(0, 250));
         return response({ ok: false, error: "ai_request_failed" }, 502, origin);
+      }
+    }
+    if (path === "/writing-sync" && request.method === "POST") {
+      if (!env.NOTION_TOKEN || !env.NOTION_WRITING_DATA_SOURCE_ID)
+        return response({ ok: false, error: "writing_not_configured" }, 503, origin);
+      const raw = await request.text();
+      if (raw.length > 16000) return response({ ok: false, error: "too_large" }, 413, origin);
+      let item;
+      try { item = JSON.parse(raw); }
+      catch { return response({ ok: false, error: "invalid_json" }, 400, origin); }
+      if (!item || typeof item.id !== "string" || !/^[a-zA-Z0-9_-]{10,100}$/.test(item.id)
+        || typeof item.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(item.date)
+        || !["guided","free"].includes(item.mode)
+        || typeof item.answer !== "string" || !item.answer.trim() || item.answer.length > 500
+        || typeof item.corrected !== "string" || !item.corrected.trim() || item.corrected.length > 1800
+        || typeof item.minimalCorrection !== "string" || !item.minimalCorrection.trim()
+        || typeof item.translation !== "string" || !item.translation.trim()
+        || typeof item.reviewText !== "string" || item.reviewText.length > 1800
+        || !Array.isArray(item.topics) || item.topics.length > 8
+        || item.topics.some(t=>!["be動詞・一般動詞","時制","現在完了","前置詞","疑問文・否定文","語順","語彙・表現","その他"].includes(t))
+        || typeof item.intent !== "string" || item.intent.length > 500
+        || typeof item.engine !== "string" || item.engine.length > 50) {
+        return response({ ok: false, error: "invalid_writing" }, 400, origin);
+      }
+      const ds = env.NOTION_WRITING_DATA_SOURCE_ID;
+      try {
+        const prior = await notion(env, "/data_sources/" + encodeURIComponent(ds) + "/query", {
+          filter: { property: "記録ID", rich_text: { equals: item.id } }, page_size: 1
+        });
+        if (prior.results?.length) return response({ ok: true, duplicate: true }, 200, origin);
+        const title = item.date + "｜" + (item.mode === "guided" ? "お題" : "自由作文") + "｜" + item.answer.slice(0, 35);
+        await notion(env, "/pages", {
+          parent: { type: "data_source_id", data_source_id: ds },
+          properties: {
+            "英作文": { title: richText(title) },
+            "記録ID": { rich_text: richText(item.id) },
+            "学習日": { date: { start: item.date } },
+            "モード": { select: { name: item.mode === "guided" ? "お題" : "自由作文" } },
+            "原文": { rich_text: richText(item.answer) },
+            "お題・意図": { rich_text: richText(item.intent) },
+            "文法の誤り": { rich_text: richText(item.reviewText) },
+            "修正後の英文": { rich_text: richText(item.minimalCorrection) },
+            "自然な英文": { rich_text: richText(item.corrected) },
+            "日本語訳": { rich_text: richText(item.translation) },
+            "復習テーマ": { multi_select: item.topics.map(name => ({ name })) },
+            "復習状況": { select: { name: "未復習" } },
+            "添削エンジン": { rich_text: richText(item.engine) }
+          }
+        });
+        return response({ ok: true, saved: true }, 200, origin);
+      } catch (err) {
+        console.error("Writing sync failed", String(err).slice(0, 200));
+        return response({ ok: false, error: "writing_notion_error" }, 502, origin);
       }
     }
     if (!env.NOTION_TOKEN || !env.NOTION_DATA_SOURCE_ID) {
